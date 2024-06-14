@@ -126,10 +126,10 @@ fun RecentlyPlayedShows(navController: NavController) {
     }
 
     recentShows.sortBy { -it.timestamp }
-
-    if (recentShows.size > 20) {
+    val maxShows = 20
+    if (recentShows.size > maxShows) {
         val editing = preferences.edit()
-        for (show in recentShows.reversed()) {
+        for (show in recentShows.slice(maxShows..<recentShows.size)) {
             editing.remove(show.id)
         }
         editing.apply()

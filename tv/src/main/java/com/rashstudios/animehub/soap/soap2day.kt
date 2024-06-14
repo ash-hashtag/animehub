@@ -542,7 +542,7 @@ suspend fun getMovieLink(context: Context, movie: Movie): MovieVideo? {
                 null,
             vtt = vtt.ifEmpty { null },
             title = movie.title,
-            subtitle = directUrl
+            subtitle = movie.title
         )
     } catch (e: Exception) {
         println("Exception getting movie link ${e.message}")
@@ -565,7 +565,7 @@ data class RecentlyWatchedMovie(
 
 fun getRecentlyWatchedTvShows(context: Context): List<RecentlyWatchedMovie> {
     val prefs = recentlyWatchedTvShowsPrefs(context)
-    val shows = prefs.all.map {
+    val shows =  prefs.all.map {
         val url = it.key
         val o = JSONObject(it.value as String)
         val thumbnail = o.getString("thumbnail")
@@ -573,13 +573,14 @@ fun getRecentlyWatchedTvShows(context: Context): List<RecentlyWatchedMovie> {
         val movie = Movie(title, url, thumbnail)
         val timestamp = o.getLong("timestamp")
         RecentlyWatchedMovie(movie, timestamp)
-    }
+    }.toMutableList()
 
-    shows.sortedBy { -it.timestamp }
+    shows.sortBy { -it.timestamp }
 
-    if (shows.size > 20) {
+    val maxShows = 20
+    if (shows.size > maxShows) {
         val editing = prefs.edit()
-        for (show in shows.reversed()) {
+        for (show in shows.slice(maxShows..<shows.size)) {
             editing.remove(show.movie.url)
         }
         editing.apply()
