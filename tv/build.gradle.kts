@@ -19,8 +19,23 @@ android {
 
     }
 
+
+    signingConfigs {
+       create("release"){
+           storeFile =  file(findProperty("RELEASE_STORE_FILE") as String)
+           storePassword =  findProperty("RELEASE_STORE_PASSWORD") as String
+           keyAlias = findProperty("RELEASE_KEY_ALIAS") as String
+           keyPassword = findProperty("RELEASE_KEY_PASSWORD") as String
+
+           // Optional, specify signing versions used
+           // v1SigningEnabled true
+           // v2SigningEnabled true
+       }
+    }    
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -28,6 +43,8 @@ android {
             )
         }
     }
+
+    
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
@@ -92,4 +109,7 @@ dependencies {
     implementation("androidx.media3:media3-common:1.3.1")
 
     implementation("io.coil-kt:coil-compose:2.6.0")
+
+
+    implementation("com.fleeksoft.ksoup:ksoup:0.1.2")
 }

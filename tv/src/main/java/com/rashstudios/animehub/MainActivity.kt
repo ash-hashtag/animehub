@@ -1,47 +1,48 @@
 package com.rashstudios.animehub
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.appcompat.app.AlertDialog
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -52,6 +53,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.fragment.app.FragmentActivity
 import androidx.leanback.app.VideoSupportFragment
 import androidx.leanback.app.VideoSupportFragmentGlueHost
@@ -69,10 +71,15 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.rashstudios.animehub.soap.DEFAULT_THUMBNAIL
+import com.rashstudios.animehub.soap.Movie
+import com.rashstudios.animehub.soap.SearchResultsMoviesPage
+import com.rashstudios.animehub.soap.ThumbnailCard
+import com.rashstudios.animehub.soap.TvShowEpisodesGrid
 import com.rashstudios.animehub.ui.theme.AnimeHubTheme
-import fuel.FuelBuilder
+import fuel.Fuel
 import fuel.HttpResponse
-import fuel.Request
+import fuel.method
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -80,9 +87,6 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.net.URLDecoder
 import java.net.URLEncoder
-import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 import java.util.ArrayList
 import kotlin.math.max
 
@@ -106,10 +110,12 @@ class MainActivity : ComponentActivity() {
 
 
 suspend fun makeRequest(url: String): HttpResponse {
-    val fuel = FuelBuilder().build()
-    val headers = mutableMapOf<String, String>()
-    headers.set("Referer", ALLANIME_REFR)
-    val response = fuel.get(request = Request.Builder().url(url).headers(headers).build())
+//    val fuel = FuelBuilder().build()
+    val headers = mapOf(
+        "referer" to ALLANIME_REFR
+    )
+//    val request = Request.Builder().url(url).headers(headers).build()
+    val response = Fuel.method(url, headers = headers, method = "GET")
     return response
 }
 
@@ -151,12 +157,10 @@ suspend fun getShows(query: String): List<Show> {
 const val ALLANIME_REFR = "https://allanime.to"
 const val ALLANIME_BASE = "allanime.day"
 const val ALLANIME_API = "https://api.${ALLANIME_BASE}"
+const val AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0"
 
 fun searchAnimeUrl(searchAnimeQuery: String, mode: String = "sub"): String {
     val animeQuery = searchAnimeQuery.trim().replace(' ', '+')
-//    val query_query_val =
-//        "query(        \$search: SearchInput        \$limit: Int        \$page: Int        \$translationType: VaildTranslationTypeEnumType        \$countryOrigin: VaildCountryOriginEnumType    ) {    shows(        search: \$search        limit: \$limit        page: \$page        translationType: \$translationType        countryOrigin: \$countryOrigin    ) {        edges {            _id name availableEpisodes __typename       }    }}"
-//
     val searchGqlQuery =
         "query(        \$search: SearchInput        \$limit: Int        \$page: Int        \$translationType: VaildTranslationTypeEnumType        \$countryOrigin: VaildCountryOriginEnumType    ) {    shows(        search: \$search        limit: \$limit        page: \$page        translationType: \$translationType        countryOrigin: \$countryOrigin    ) {        edges {            _id name availableEpisodes thumbnail __typename}    }}"
 
@@ -170,44 +174,34 @@ fun searchAnimeUrl(searchAnimeQuery: String, mode: String = "sub"): String {
 
 
 @Composable
-fun AnimeShowCard(show: Show, navController: NavController) {
-    Card(modifier = Modifier
-        .padding(4.dp)
-        .clickable {
-            val navigateUrl = "episodes/${
-                encodeUriComponent(
-                    show.id
-                )
-            }/${encodeUriComponent(show.name)}/${encodeUriComponent(show.thumbnail)}"
-            navController.navigate(
-                navigateUrl
-            )
-        }) {
-        Column(modifier = Modifier.padding(4.dp)) {
-            AsyncImage(
-                modifier = Modifier.fillMaxWidth(),
-                contentScale = ContentScale.Crop,
-                model = show.thumbnail,
-                contentDescription = "Thumbnail of ${show.name}"
-            )
-            Text(
-                text = show.name,
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
-            )
-            Text("SUB: ${show.availableEpisodes.sub}")
-            Text("DUB: ${show.availableEpisodes.dub}")
-            Text("RAW: ${show.availableEpisodes.raw}")
-        }
-    }
+fun SearchTextField(onSubmit: (String) -> Unit, placeHolderText: String = "Search ") {
+    var searchText by remember { mutableStateOf(TextFieldValue("")) }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
-
+    TextField(
+        modifier = Modifier
+            .padding(4.dp)
+            .fillMaxWidth(),
+        placeholder = {
+            Text(placeHolderText)
+        },
+        value = searchText,
+        onValueChange = {
+            searchText = it;
+        },
+        keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = {
+            keyboardController?.hide()
+            onSubmit(searchText.text)
+        })
+    )
 }
 
 @Composable
 fun AnimeEpisodeListPage(
     navController: NavController, showId: String, showName: String, thumbnail: String
 ) {
-    var availableEpisodesDetails by remember {
+    var availableEpisodesDetails by rememberSaveable(stateSaver = AvailableEpisodesDetailsSaver) {
         mutableStateOf(
             AvailableEpisodesDetails(
                 listOf(),
@@ -219,7 +213,11 @@ fun AnimeEpisodeListPage(
 
     var searchText by remember { mutableStateOf(TextFieldValue("")) }
 
-    var filteredEpisodeDetails by remember {
+    var tabIndex by rememberSaveable {
+        mutableStateOf(0)
+    }
+
+    var filteredEpisodeDetails by rememberSaveable(stateSaver = AvailableEpisodesDetailsSaver) {
         mutableStateOf(
             AvailableEpisodesDetails(
                 listOf(),
@@ -229,97 +227,111 @@ fun AnimeEpisodeListPage(
         )
     }
 
+    val snackbarHostState = LocalSnackbarHostState.current
+
     LaunchedEffect(true) {
+        snackbarHostState.showSnackbar("Searching for episodes of ${showName}")
         availableEpisodesDetails = getEpisodesList(showId)
         filteredEpisodeDetails = availableEpisodesDetails
+        snackbarHostState.showSnackbar("Found Results: SUB: ${availableEpisodesDetails.sub.size}, DUB: ${availableEpisodesDetails.dub.size}, RAW: ${availableEpisodesDetails.raw.size}")
     }
 
 
     val keyboardController = LocalSoftwareKeyboardController.current
     val context = LocalContext.current
-    val lastWatched = getRecentlyWatched(context, showId)
+//    val lastWatched = getRecentlyWatched(context, showId)
 
 
     Column(modifier = Modifier.padding(16.dp)) {
-        TitleText(text = showName)
         Row {
-
             AsyncImage(model = thumbnail, contentDescription = "Thumbnail of ${showName}")
-            TextField(modifier = Modifier.padding(4.dp),
-                placeholder = {
-                    Text("Search Episode")
-                },
-                value = searchText,
-                onValueChange = {
-                    searchText = it;
+            Column(modifier = Modifier.padding(4.dp)) {
+                Text(
+                    text = showName, style = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 8.em,
+                    )
+                )
+                TextField(
+                    modifier = Modifier.padding(4.dp).fillMaxWidth(),
+                    placeholder = {
+                        Text("Search Episode")
+                    },
+                    value = searchText,
+                    onValueChange = {
+                        searchText = it;
 
-                    val sub =
-                        availableEpisodesDetails.sub.filter { ep -> ep.startsWith(searchText.text) }
-//                    val dub =
-//                        availableEpisodesDetails.dub.filter { ep -> ep.startsWith(searchText.text) }
-//                    val raw =
-//                        availableEpisodesDetails.raw.filter { ep -> ep.startsWith(searchText.text) }
-                    val dub = availableEpisodesDetails.dub
-                    val raw = availableEpisodesDetails.raw
+                        val sub =
+                            availableEpisodesDetails.sub.filter { ep -> ep.startsWith(searchText.text) }
+                        val dub =
+                            availableEpisodesDetails.dub.filter { ep -> ep.startsWith(searchText.text) }
+                        val raw =
+                            availableEpisodesDetails.raw.filter { ep -> ep.startsWith(searchText.text) }
 
-                    filteredEpisodeDetails = AvailableEpisodesDetails(sub, dub, raw)
+                        filteredEpisodeDetails = AvailableEpisodesDetails(sub, dub, raw)
 
-                },
-                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = {
-                    keyboardController?.hide()
-                    if (searchText.text.isNotEmpty()) {
-                        if (availableEpisodesDetails.sub.contains(searchText.text)) {
-                            val episodeNumber = searchText.text
+                    },
+                    keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = {
+                        keyboardController?.hide()
+                        if (searchText.text.isNotEmpty()) {
+                            if (availableEpisodesDetails.sub.contains(searchText.text)) {
+                                val episodeNumber = searchText.text
 
-                            updateRecentlyWatched(
-                                context,
-                                showId,
-                                showName,
-                                thumbnail,
-                                availableEpisodesDetails.sub,
-                                episodeNumber,
-                                null
-                            )
-                            val options = MyVideoOptions(
-                                showId,
-                                showName,
-                                availableEpisodesDetails.sub,
-                                episodeNumber
-                            )
-                            openVideoPlayPage(
-                                context,
-                                options
-                            )
+                                updateRecentlyWatched(
+                                    context,
+                                    showId,
+                                    showName,
+                                    thumbnail,
+                                    availableEpisodesDetails.sub,
+                                    episodeNumber,
+                                    null
+                                )
+                                val options = MyVideoOptions(
+                                    showId,
+                                    showName,
+                                    availableEpisodesDetails.sub,
+                                    episodeNumber
+                                )
+                                openVideoPlayPage(
+                                    context,
+                                    options
+                                )
+                            }
                         }
-                    }
-                })
-            )
-
+                    })
+                )
+            }
         }
 
-        Text(
-            text = "Sub",
-            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-        )
-        var previoulyWatched: String? = null
-        if (lastWatched.has("episode")) previoulyWatched = lastWatched.getString("episode")
+        val tabs = listOf("Sub", "Dub", "Raw")
 
-        println("PREVIOUSLY WATCHED EPISODE: ${previoulyWatched}")
-        EpisodesGrid(
-            showId, showName, thumbnail, filteredEpisodeDetails.sub,
-            previoulyWatched
-        )
-//        Text(
-//            text = "Dub",
-//            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-//        )
-//        EpisodesGrid(showId, showName, filteredEpisodeDetails.dub)
-//        Text(
-//            text = "Raw",
-//            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-//        )
-//        EpisodesGrid(showId, showName, filteredEpisodeDetails.raw)
+        TabRow(selectedTabIndex = tabIndex) {
+            tabs.forEachIndexed { index, text ->
+                Tab(selected = index == tabIndex, onClick = { tabIndex = index }) {
+                    Text(text)
+                }
+            }
+        }
+
+        var previoulyWatched: String? = null
+        when (tabIndex) {
+            0 -> EpisodesGrid(
+                showId, showName, thumbnail, filteredEpisodeDetails.sub,
+                previoulyWatched, "sub"
+            )
+
+            1 -> EpisodesGrid(
+                showId, showName, thumbnail, filteredEpisodeDetails.dub,
+                previoulyWatched, "dub"
+            )
+
+            2 -> EpisodesGrid(
+                showId, showName, thumbnail, filteredEpisodeDetails.raw,
+                previoulyWatched, "raw"
+            )
+        }
+
     }
 
 }
@@ -327,9 +339,28 @@ fun AnimeEpisodeListPage(
 
 @Composable
 fun TileShows(shows: List<Show>, navController: NavController) {
-    LazyVerticalGrid(columns = GridCells.Adaptive(200.dp)) {
+    LazyVerticalGrid(columns = GridCells.Fixed(5)) {
         items(shows.size) {
-            AnimeShowCard(show = shows[it], navController)
+            val show = shows[it]
+            val modifier = Modifier
+                .padding(4.dp)
+                .clickable {
+                    val navigateUrl = "episodes/${
+                        encodeUriComponent(
+                            show.id
+                        )
+                    }/${encodeUriComponent(show.name)}/${encodeUriComponent(show.thumbnail)}"
+                    navController.navigate(
+                        navigateUrl
+                    )
+                    println("Navigating '${show.name}' $navigateUrl")
+                }
+                .focusable()
+            ThumbnailCard(
+                thumbnail = show.thumbnail, title = show.name,
+                subtitle = "SUB: ${show.availableEpisodes.dub} DUB: ${show.availableEpisodes.sub} RAW: ${show.availableEpisodes.raw}",
+                modifier = modifier
+            )
         }
     }
 }
@@ -338,36 +369,37 @@ fun TileShows(shows: List<Show>, navController: NavController) {
 @Composable
 fun EpisodesGrid(
     showId: String, showName: String, thumbnail: String, episodeNumbers: List<String>,
-    previouslyWatched: String? = null
+    previouslyWatched: String? = null, mode: String = "sub"
 ) {
 
     val lazyGridState = rememberLazyGridState()
 
     val focusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(true) {
-        if (previouslyWatched != null) {
-            delay(1000)
-            val index = episodeNumbers.indexOf(previouslyWatched)
-            if (index != -1) {
-                lazyGridState.animateScrollToItem(index)
-            }
-        }
-    }
+    //FIXME: Make it consistent to only focus first time
+    // LaunchedEffect(true) {
+    //     if (previouslyWatched != null) {
+    //         delay(200)
+    //         val index = episodeNumbers.indexOf(previouslyWatched)
+    //         if (index != -1) {
+    //             lazyGridState.animateScrollToItem(index)
+    //         }
+    //     }
+    // }
 
     val context = LocalContext.current
 
     fun onClick(episodeNumber: String) {
-        println("Updated Viewing Episode Number ${episodeNumber}")
+        println("Updated Viewing Episode Number ${episodeNumber} ${mode}")
 
         updateRecentlyWatched(
             context, showId,
-            showName, thumbnail, episodeNumbers, episodeNumber, null
+            showName, thumbnail, episodeNumbers, episodeNumber, null, mode
         )
 
         openVideoPlayPage(
             context,
-            MyVideoOptions(showId, showName, episodeNumbers, episodeNumber)
+            MyVideoOptions(showId, showName, episodeNumbers, episodeNumber, mode)
         )
     }
     LazyVerticalGrid(
@@ -376,7 +408,7 @@ fun EpisodesGrid(
     ) {
         items(episodeNumbers.size) { index ->
             val episodeNumber = episodeNumbers[index]
-            var focused = if (previouslyWatched != null) {
+            val focused = if (previouslyWatched != null) {
                 previouslyWatched == episodeNumber
             } else {
                 index == 0
@@ -396,7 +428,7 @@ fun EpisodesGrid(
 fun EpisodeButton(
     episodeNumber: String,
     onClick: (String) -> Unit,
-    focusRequester: FocusRequester?
+    focusRequester: FocusRequester?,
 ) {
     val interactionSource = remember {
         MutableInteractionSource()
@@ -435,7 +467,8 @@ fun updateRecentlyWatched(
     thumbnail: String? = null,
     episodes: List<String>? = null,
     episodeNumber: String? = null,
-    position: Long? = null
+    position: Long? = null,
+    mode: String? = null,
 ) {
     val pref = context.getSharedPreferences("recentlyWatched", Context.MODE_PRIVATE)
     val o = JSONObject(pref.getString(showId, "{}")!!)
@@ -449,6 +482,8 @@ fun updateRecentlyWatched(
         o.put("episode", episodeNumber)
     if (position != null)
         o.put("position", position)
+    if (mode != null)
+        o.put("mode", mode)
     o.put("timestamp", System.currentTimeMillis())
     val s = o.toString()
     println("Updated Recently Watched ${showId}: ${s}")
@@ -728,6 +763,32 @@ suspend fun getM3u8VideoInformation(url: String): List<ResolutionAndUrl> {
 
 data class ResolutionAndUrl(val width: Int, val height: Int, val url: String)
 
+val ShowSaver = listSaver<List<Show>, List<Any>>(
+    save = { list ->
+        list.map { it ->
+            listOf(
+                it.id,
+                it.name,
+                it.thumbnail,
+                it.availableEpisodes.sub,
+                it.availableEpisodes.dub,
+                it.availableEpisodes.raw
+            )
+        }
+    },
+    restore = { list ->
+        list.map {
+            Show(
+                it[0] as String,
+                it[1] as String,
+                it[2] as String,
+                AvailableEpisodes(it[3] as Int, it[4] as Int, it[5] as Int)
+            )
+        }
+    }
+)
+
+
 data class Show(
     val id: String,
     val name: String,
@@ -778,49 +839,116 @@ data class AvailableEpisodes(val sub: Int, val dub: Int, val raw: Int) {
     }
 }
 
+val AvailableEpisodesDetailsSaver = listSaver<AvailableEpisodesDetails, Any>(
+    save = { listOf(it.sub, it.dub, it.raw) },
+    restore = {
+        AvailableEpisodesDetails(
+            it[0] as List<String>,
+            it[1] as List<String>,
+            it[2] as List<String>
+        )
+    }
+)
+
 data class AvailableEpisodesDetails(
     val sub: List<String>, val dub: List<String>, val raw: List<String>
 )
 
 data class Source(val sourceUrl: String, val sourceName: String)
 
+val LocalSnackbarHostState = staticCompositionLocalOf<SnackbarHostState> {
+    error("No SnackbarHostState provided")
+}
+
+
+@SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun MyApp() {
     val navController = rememberNavController()
-    NavHost(navController = navController, startDestination = "home") {
-        composable("home") { HomePage(navController) }
-        composable("error") { ErrorPage() }
-        composable(
-            "episodes/{showId}/{showName}/{thumbnail}",
-            arguments = listOf(navArgument("showId") { type = NavType.StringType },
-                navArgument("showName") { type = NavType.StringType },
-                navArgument("thumbnail") { type = NavType.StringType })
-        ) {
-            val showId = it.arguments?.getString("showId")?.also { decodeUriComponent(it) }
-            val showName = it.arguments?.getString("showName")?.also { decodeUriComponent(it) }
-            val thumbnail = it.arguments?.getString("thumbnail")?.also { decodeUriComponent(it) }
-            if (showId != null && showName != null) {
-                AnimeEpisodeListPage(
-                    navController,
-                    showId, showName,
-                    thumbnail ?: "https://picsum.photos/720/480",
-                )
-            } else {
-                ErrorPage()
-            }
-        }
-        composable(
-            "search/{query}",
-            arguments = listOf(navArgument("query") { type = NavType.StringType })
-        ) {
-            val query = it.arguments?.getString("query")
-            if (query != null)
-                SearchResultsPage(navController, query)
-            else
-                ErrorPage()
-        }
+    val snackbarHostState = remember { SnackbarHostState() }
 
+    CompositionLocalProvider(LocalSnackbarHostState provides snackbarHostState) {
+        Scaffold(snackbarHost = { SnackbarHost(hostState = snackbarHostState) }) {
+
+            NavHost(navController = navController, startDestination = "home") {
+                composable("home") {
+                    RootHomePage(navController)
+                }
+                composable("error") { ErrorPage() }
+                composable(
+                    "episodes/{showId}/{showName}/{thumbnail}",
+                    arguments = listOf(navArgument("showId") { type = NavType.StringType },
+                        navArgument("showName") { type = NavType.StringType },
+                        navArgument("thumbnail") { type = NavType.StringType })
+                ) {
+                    val showId = it.arguments?.getString("showId")
+                    val showName = it.arguments?.getString("showName")
+                    val thumbnail = it.arguments?.getString("thumbnail")
+                    if (showId != null && showName != null) {
+                        AnimeEpisodeListPage(
+                            navController,
+                            decodeUriComponent(showId), decodeUriComponent(showName),
+                            if (thumbnail != null)
+                                decodeUriComponent(thumbnail) else DEFAULT_THUMBNAIL,
+                        )
+                    } else {
+                        ErrorPage()
+                    }
+                }
+                composable(
+                    "search/{query}",
+                    arguments = listOf(navArgument("query") { type = NavType.StringType })
+                ) {
+                    val query = it.arguments?.getString("query")
+                    if (query != null)
+                        SearchResultsPage(navController, query)
+                    else
+                        ErrorPage()
+                }
+
+                composable(
+                    "tvEpisodes/{showUrl}/{showTitle}/{showThumbnail}", arguments =
+                    listOf(
+                        navArgument("showUrl") { type = NavType.StringType },
+                        navArgument("showTitle") { type = NavType.StringType },
+                        navArgument("showThumbnail") { type = NavType.StringType },
+                    )
+                ) {
+                    val url = it.arguments?.getString("showUrl")
+                    val title = it.arguments?.getString("showTitle")
+                    val thumbnail = it.arguments?.getString("showThumbnail")
+
+                    if (url != null && title != null && thumbnail != null) {
+                        val movie = Movie(
+                            decodeUriComponent(title),
+                            decodeUriComponent(url),
+                            decodeUriComponent(thumbnail)
+                        )
+                        TvShowEpisodesGrid(movie = movie)
+                    } else {
+                        ErrorPage()
+                    }
+                }
+
+                composable(
+                    "searchTv/{query}",
+                    arguments = listOf(navArgument("query") { type = NavType.StringType })
+                ) {
+                    val query = it.arguments?.getString("query")
+                    if (query != null) {
+                        SearchResultsMoviesPage(navController, decodeUriComponent(query))
+                    } else {
+                        ErrorPage()
+                    }
+                }
+
+            }
+
+
+        }
     }
+
+
 }
 
 @Composable
@@ -838,29 +966,30 @@ fun decodeUriComponent(s: String): String {
 }
 
 
-data class VideoPlayOptions(val url: String, val title: String?, val subtitle: String?)
-
 data class MyVideoOptions(
     val showId: String,
     val showName: String,
     val episodes: List<String>,
     val episodeNumber: String,
+    val mode: String = "sub"
 )
 
 class PlaybackActivity() : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val showId = intent.getStringExtra("showId")!!
         val showName = intent.getStringExtra("showName")!!
         val episodes = intent.getStringArrayListExtra("episodes")!!
         val episodeNumber = intent.getStringExtra("episodeNumber")!!
+        val mode = intent.getStringExtra("mode")!!
 
         val myVideoOptions = MyVideoOptions(
             showId,
             showName,
             episodes,
-            episodeNumber
+            episodeNumber,
+            mode,
         )
         if (savedInstanceState == null) {
             supportFragmentManager.beginTransaction()
@@ -870,7 +999,6 @@ class PlaybackActivity() : FragmentActivity() {
                 ).commit()
         }
     }
-
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
@@ -885,6 +1013,7 @@ fun openVideoPlayPage(context: Context, mOptions: MyVideoOptions) {
     intent.putExtra("episodeNumber", mOptions.episodeNumber)
     intent.putExtra("showId", mOptions.showId)
     intent.putExtra("showName", mOptions.showName)
+    intent.putExtra("mode", mOptions.mode)
 
     context.startActivity(intent)
 }
@@ -921,32 +1050,12 @@ class MyVideoFragment(var mOptions: MyVideoOptions) : VideoSupportFragment() {
         mPlayerGlue = playerGlue
     }
 
-//    fun askToResumePlay(position: Long) {
-//        val duration = convertMillisToHMS(position)
-//
-//        val alertDialog = AlertDialog.Builder(requireContext())
-//
-//        alertDialog.setTitle("Continue Watching From ${duration}?")
-//        alertDialog.setPositiveButton("Yes", { dialog, _ ->
-//            dialog.dismiss()
-//        })
-//        alertDialog.setPositiveButton("No", { dialog, _ ->
-//            dialog.dismiss()
-//        })
-//    }
 
     fun playEpisode(episodeNumber: String, position: Long = 0) {
         mOptions = mOptions.copy(episodeNumber = episodeNumber)
-//        val recentlyWatchedOptions = getRecentlyWatched(requireContext(), mOptions.showId)
-//        if (recentlyWatchedOptions.has("position") && recentlyWatchedOptions.has("episodeNumber")) {
-//            if (recentlyWatchedOptions.getString("episodeNumber") == mOptions.episodeNumber) {
-//                val position = recentlyWatchedOptions.getLong("position")
-//                val duration = convertMillisToHMS(position)
-//            }
-//        }
 
         CoroutineScope(dispatcher).launch {
-            val url = getEpisodeUrl(mOptions.showId, mOptions.episodeNumber)
+            val url = getEpisodeUrl(mOptions.showId, mOptions.episodeNumber, mOptions.mode)
             if (url != null) {
                 val playerGlue = mPlayerGlue
                 if (playerGlue != null) {
@@ -978,14 +1087,14 @@ class MyVideoFragment(var mOptions: MyVideoOptions) : VideoSupportFragment() {
     override fun onDestroy() {
         super.onDestroy()
         val currentPosition = mPlayerGlue?.currentPosition
-
         updateRecentlyWatched(
             requireContext(), mOptions.showId,
             null,
             null,
             null,
             mOptions.episodeNumber,
-            currentPosition
+            currentPosition,
+            mOptions.mode,
         )
         mPlayerGlue?.playerAdapter?.release()
     }

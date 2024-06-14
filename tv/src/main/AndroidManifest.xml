@@ -33,6 +33,8 @@
 
         <activity android:name=".PlaybackActivity"
             android:theme="@style/Theme.Leanback" />
+        <activity android:name=".soap.BasicPlaybackActivity"
+            android:theme="@style/Theme.Leanback" />
     </application>
 
 </manifest>

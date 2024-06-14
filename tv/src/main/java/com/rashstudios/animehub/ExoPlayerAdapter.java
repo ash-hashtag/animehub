@@ -1,5 +1,8 @@
 package com.rashstudios.animehub;
 
+import static androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES;
+import static androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS;
+
 import android.content.Context;
 import android.net.Uri;
 import android.os.Handler;
@@ -13,10 +16,13 @@ import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
 import androidx.media3.common.util.UnstableApi;
+import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.cache.CacheDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.RendererCapabilities;
 import androidx.media3.exoplayer.SimpleExoPlayer;
+import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory;
+import androidx.media3.exoplayer.hls.HlsExtractorFactory;
 import androidx.media3.exoplayer.hls.HlsMediaSource;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
@@ -52,9 +58,14 @@ public class ExoPlayerAdapter extends PlayerAdapter implements Player.Listener {
     @OptIn(markerClass = UnstableApi.class)
     public ExoPlayerAdapter(Context context, Boolean hls) {
         mContext = context;
+
+        HlsExtractorFactory extractorFactory = new DefaultHlsExtractorFactory(
+                FLAG_ALLOW_NON_IDR_KEYFRAMES | FLAG_DETECT_ACCESS_UNITS, false
+        );
         MediaSource.Factory mediaSourceFactory =
                 hls ? new DefaultMediaSourceFactory(new CacheDataSource.Factory()) :
-                        new HlsMediaSource.Factory(new CacheDataSource.Factory());
+                        new HlsMediaSource.Factory(new CacheDataSource.Factory())
+                                .setExtractorFactory(extractorFactory);
         mPlayer = new ExoPlayer.Builder(context)
                 .setMediaSourceFactory(mediaSourceFactory)
                 .build();
@@ -89,6 +100,7 @@ public class ExoPlayerAdapter extends PlayerAdapter implements Player.Listener {
             }
         }
     }
+
 
     /**
      * Notify the state of buffering. For example, an app may enable/disable a loading figure
@@ -223,6 +235,17 @@ public class ExoPlayerAdapter extends PlayerAdapter implements Player.Listener {
         return true;
     }
 
+    @UnstableApi
+    public void setMediaItem(MediaItem mediaItem) {
+        reset();
+//        mPlayer.setMediaItem(mediaItem);
+        MediaSource source = new DefaultMediaSourceFactory(mContext).createMediaSource(mediaItem);
+        mPlayer.setMediaSource(source);
+        mPlayer.prepare();
+        notifyBufferingStartEnd();
+        getCallback().onPlayStateChanged(ExoPlayerAdapter.this);
+    }
+
     public int getAudioStreamType() {
         return mAudioStreamType;
     }
@@ -240,13 +263,7 @@ public class ExoPlayerAdapter extends PlayerAdapter implements Player.Listener {
      */
     @OptIn(markerClass = UnstableApi.class)
     public MediaSource onCreateMediaSource(Uri uri) {
-//        String userAgent = Util.getUserAgent(mContext, "ExoPlayerAdapter");
         return new DefaultMediaSourceFactory(mContext).createMediaSource(MediaItem.fromUri(uri));
-//        return new ExtractorMediaSource(uri,
-//                new DefaultDataSourceFactory(mContext, userAgent),
-//                new DefaultExtractorsFactory(),
-//                null,
-//                null);
     }
 
     @OptIn(markerClass = UnstableApi.class)
@@ -254,23 +271,13 @@ public class ExoPlayerAdapter extends PlayerAdapter implements Player.Listener {
         reset();
         if (mMediaSourceUri != null) {
             MediaSource mediaSource = onCreateMediaSource(mMediaSourceUri);
-            mPlayer.prepare(mediaSource);
+//            mPlayer.prepare(mediaSource);
+            mPlayer.setMediaSource(mediaSource);
+            mPlayer.prepare();
         } else {
             return;
         }
 
-//        mPlayer.setAudioStreamType(mAudioStreamType);
-//        mPlayer.setVideoListener(new SimpleExoPlayer.VideoListener() {
-//            @Override
-//            public void onVideoSizeChanged(int width, int height, int unappliedRotationDegrees,
-//                                           float pixelWidthHeightRatio) {
-//                getCallback().onVideoSizeChanged(ExoPlayerAdapter.this, width, height);
-//            }
-//
-//            @Override
-//            public void onRenderedFirstFrame() {
-//            }
-//        });
         notifyBufferingStartEnd();
         getCallback().onPlayStateChanged(ExoPlayerAdapter.this);
     }
@@ -347,5 +354,5 @@ public class ExoPlayerAdapter extends PlayerAdapter implements Player.Listener {
 //    public void onPositionDiscontinuity() {
 //    }
 
-    
+
 }
